@@ -1,0 +1,19 @@
+.DS_Store
+.build/
+dist/
+tmp/
+
+# Vendor-provided Windows SDK binaries and manuals are not redistributed.
+PowerMeterDev*/
+*.dll
+*.lib
+*.pdf
+
+# Local hardware investigation notes may contain device identifiers.
+docs/FIX-*.md
+tools/dll_range.py
+
+# Xcode and editor state
+*.xcuserstate
+xcuserdata/
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
