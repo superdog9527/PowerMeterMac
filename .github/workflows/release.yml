@@ -1,0 +1,70 @@
+name: Publish macOS DMG
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-dmg:
+    name: Build and attach DMG
+    runs-on: macos-14
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - name: Install libusb
+        run: brew install libusb
+
+      - name: Run protocol and safety tests
+        run: swift run PowerMeterSelfTest
+
+      - name: Build application bundle
+        run: zsh scripts/build-app.sh
+
+      - name: Verify application bundle
+        run: |
+          codesign --verify --deep --strict --verbose=2 "dist/Power Meter.app"
+          test -x "dist/Power Meter.app/Contents/MacOS/PowerMeterMac"
+          test -f "dist/Power Meter.app/Contents/Resources/AppIcon.icns"
+
+      - name: Create compressed DMG
+        run: |
+          mkdir -p artifacts
+          dmg="artifacts/Power-Meter-macOS-${{ runner.arch }}.dmg"
+          hdiutil create \
+            -volname "Power Meter" \
+            -srcfolder "dist/Power Meter.app" \
+            -format UDZO \
+            -ov \
+            "$dmg"
+          hdiutil verify "$dmg"
+          shasum -a 256 "$dmg" > "$dmg.sha256"
+
+      - name: Upload DMG workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Power-Meter-DMG-${{ runner.arch }}
+          path: |
+            artifacts/Power-Meter-macOS-${{ runner.arch }}.dmg
+            artifacts/Power-Meter-macOS-${{ runner.arch }}.dmg.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach DMG to GitHub Release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            artifacts/Power-Meter-macOS-${{ runner.arch }}.dmg \
+            artifacts/Power-Meter-macOS-${{ runner.arch }}.dmg.sha256 \
+            --clobber

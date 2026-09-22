@@ -27,6 +27,8 @@ swift run PowerMeterMac
 
 GitHub Actions 会在每次推送到 `main`、Pull Request 或手动触发时运行自测并构建应用。构建完成后可在对应 Actions 运行页面下载 `Power-Meter-macOS-*` 工件，其中包含可执行的 `Power Meter.app`。
 
+当 GitHub Release 正式发布时，发布工作流会检出该 Release 的标签，重新测试并构建应用，生成 `Power-Meter-macOS-*.dmg` 和对应的 SHA-256 文件，并自动附加到 Release。当前应用使用临时签名，尚未进行 Apple Developer ID 签名和公证。
+
 只做安全诊断（电源输出始终关闭）：
 
 ```sh
