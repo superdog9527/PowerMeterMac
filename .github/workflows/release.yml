@@ -4,6 +4,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing GitHub Release tag to build and backfill (leave empty for artifact-only validation)
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -18,13 +23,22 @@ jobs:
       - name: Check out release tag
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.release.tag_name || github.ref }}
+          ref: ${{ github.event.release.tag_name || inputs.release_tag || github.ref }}
 
       - name: Install libusb
         run: brew install libusb
 
       - name: Run protocol and safety tests
         run: swift run PowerMeterSelfTest
+
+      - name: Set application version from release tag
+        if: github.event_name == 'release' || inputs.release_tag != ''
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          plutil -replace CFBundleShortVersionString -string "$version" Resources/Info.plist
+          plutil -replace CFBundleVersion -string "${{ github.run_number }}" Resources/Info.plist
 
       - name: Build application bundle
         run: zsh scripts/build-app.sh
@@ -59,10 +73,10 @@ jobs:
           retention-days: 30
 
       - name: Attach DMG to GitHub Release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
         run: |
           gh release upload "$RELEASE_TAG" \
             artifacts/Power-Meter-macOS-${{ runner.arch }}.dmg \
