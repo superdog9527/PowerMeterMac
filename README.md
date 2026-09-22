@@ -1,6 +1,23 @@
 # PowerMeterMac
 
-macOS 原生的 POWER Meter Pro 控制与电流分析工具。它直接使用 USB 协议连接 `VID 0811 / PID f122`，不依赖 Windows DLL。
+非官方的 macOS 原生 POWER Meter Pro 控制与电流分析工具。它通过逆向工程得到的 USB 协议连接 `VID 0811 / PID f122`，不依赖 Windows DLL。
+
+> [!CAUTION]
+> **这是第三方非官方项目，与设备制造商无隶属、授权或担保关系。** 本软件通过逆向工程开发，能够设置并开启硬件电压输出。协议差异、固件变化、接线错误或软件缺陷可能损坏仪器及被测设备。请先在限流和保护条件下验证；谨慎使用，使用风险及产生的后果由使用者自行承担。
+
+## 设备与应用
+
+<p align="center">
+  <img src="docs/images/device.webp" alt="POWER Meter Pro 设备照片" width="520">
+</p>
+
+<p align="center"><em>POWER Meter Pro 设备</em></p>
+
+<p align="center">
+  <img src="docs/images/app-screenshot.png" alt="PowerMeterMac 应用截图" width="1100">
+</p>
+
+<p align="center"><em>PowerMeterMac 波形、采样点与 A/B 标记界面</em></p>
 
 ## 功能边界
 
