@@ -113,20 +113,25 @@ public final class USBDevice {
     }
     public func setVoltage(_ value: Int) throws {
         try SafetyPolicy.validate(millivolts: value)
+        let wasOutputEnabled = outputEnabled
         let deviceMinimum = max(SafetyPolicy.minimumMillivolts, info.minimumMillivolts)
         let deviceMaximum = min(SafetyPolicy.maximumMillivolts, info.maximumVolts * 1000)
         guard (deviceMinimum...deviceMaximum).contains(value) else {
             throw MeterError.message("本设备允许的电压范围为 \(deviceMinimum)–\(deviceMaximum) mV。")
         }
         guard !capturing else { throw MeterError.message("请先停止采集再调整电压") }
-        guard !outputEnabled else { throw MeterError.message("请先确认关闭输出再调整电压") }
         do {
             try command(3, [UInt8(value & 255), UInt8(value >> 8)])
             millivolts = value
         } catch {
             // A timeout after transmission makes the device setpoint unknown.
-            // Requiring a fresh successful set prevents output enable afterward.
+            // If output was already live, immediately force it off rather than
+            // leaving an unknown voltage applied to the load.
             millivolts = nil
+            if wasOutputEnabled {
+                let stopped = emergencyStop(detail: "live voltage change failed: \(error.localizedDescription)")
+                if !stopped { throw MeterError.message("修改输出电压结果未知，紧急关断也未确认。请立即断开仪器电源。") }
+            }
             throw error
         }
     }

@@ -39,11 +39,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     private var voltageMillivolts: Int?
     private var outputEnabled = false
     private var capturing = false
+    private var changingVoltage = false
     private var connecting = false
     private var automaticallyConnect = true
     private var connectionGeneration = 0
     private var connectionTimer: Timer?
     private let connectionQueue = DispatchQueue(label: "com.powermetermac.connect")
+    private let controlQueue = DispatchQueue(label: "com.powermetermac.control", qos: .userInitiated)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -238,15 +240,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     }
     private func updateControls() {
         let ready = device != nil && !connecting
-        connectButton.isEnabled = !connecting
-        voltageButton.isEnabled = ready && !capturing && !outputEnabled
-        voltageField.isEnabled = ready && !capturing && !outputEnabled
-        outputSwitch.isEnabled = ready && voltageMillivolts != nil && !capturing
-        captureButton.isEnabled = ready && voltageMillivolts != nil
+        connectButton.isEnabled = !connecting && !changingVoltage
+        voltageButton.isEnabled = ready && !changingVoltage
+        voltageField.isEnabled = ready && !changingVoltage
+        outputSwitch.isEnabled = ready && voltageMillivolts != nil && !capturing && !changingVoltage
+        captureButton.isEnabled = ready && voltageMillivolts != nil && !changingVoltage
         ratePopup.isEnabled = !capturing
     }
     private func disconnect() {
         automaticallyConnect = false; connectionGeneration += 1; connecting = false
+        controlQueue.sync {}
         engine?.stop()
         var shutdownError: Error?
         do { try device?.safeStop() } catch { shutdownError = error }
@@ -259,14 +262,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     }
     @objc private func applyVoltage() {
         do {
-            guard let device else { throw MeterError.message("请先连接设备") }
-            guard !outputEnabled else { throw MeterError.message("请先关闭电源输出再修改电压") }
+            guard let device, let engine else { throw MeterError.message("请先连接设备") }
+            guard !changingVoltage else { return }
             let mv = try SafetyPolicy.millivolts(from: voltageField.stringValue)
-            try device.setVoltage(mv)
-            voltageMillivolts = mv
-            voltageField.stringValue = String(format: "%.3f", Double(mv) / 1000)
-            status.stringValue = "已确认电压 \(voltageField.stringValue) V"
+            let changeDuringCapture = capturing
+            changingVoltage = true
+            status.stringValue = changeDuringCapture ? "正在建立采样边界并切换电压…" : "正在设置电压…"
             updateControls()
+            controlQueue.async { [weak self] in
+                let result = Result { if changeDuringCapture { try engine.changeVoltage(to: mv) } else { try device.setVoltage(mv) } }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.device === device else { return }
+                    self.changingVoltage = false
+                    switch result {
+                    case .success:
+                        self.voltageMillivolts = mv
+                        self.voltageField.stringValue = String(format: "%.3f", Double(mv) / 1000)
+                        self.status.stringValue = changeDuringCapture ? "采集中 · 设定电压已切换为 \(self.voltageField.stringValue) V" : "已确认电压 \(self.voltageField.stringValue) V"
+                    case .failure(let error):
+                        self.voltageMillivolts = device.millivolts
+                        self.outputEnabled = device.outputEnabled
+                        self.capturing = device.capturing
+                        self.outputSwitch.state = self.outputEnabled ? .on : .off
+                        self.captureButton.title = self.capturing ? "停止采集" : "开始采集"
+                        self.show(error)
+                    }
+                    self.updateControls()
+                }
+            }
         } catch {
             voltageMillivolts = device?.millivolts; updateControls(); show(error)
         }

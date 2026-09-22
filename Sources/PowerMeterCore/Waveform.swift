@@ -78,6 +78,7 @@ public struct TimeViewport {
 /// Bounded ring, shared only on the UI thread. No per-frame copy of the entire history.
 public final class SampleHistory {
     private var values: [Float]
+    private var voltages: [UInt16]
     public let capacity: Int
     public private(set) var endIndex: UInt64 = 0
     public private(set) var count = 0
@@ -85,10 +86,13 @@ public final class SampleHistory {
     public init(capacity: Int = 6_000_000) {
         self.capacity = max(1, capacity)
         values = [Float](repeating: 0, count: max(1, capacity))
+        voltages = [UInt16](repeating: 0, count: max(1, capacity))
     }
     public func append(_ batch: [Measurement]) {
         for sample in batch {
-            values[Int(endIndex % UInt64(capacity))] = sample.nanoamps
+            let slot = Int(endIndex % UInt64(capacity))
+            values[slot] = sample.nanoamps
+            voltages[slot] = UInt16(clamping: sample.millivolts ?? 0)
             endIndex += 1; count = min(count + 1, capacity)
         }
     }
@@ -96,14 +100,19 @@ public final class SampleHistory {
         precondition(index >= startIndex && index < endIndex)
         return values[Int(index % UInt64(capacity))]
     }
+    public func measurement(at index: UInt64) -> Measurement {
+        precondition(index >= startIndex && index < endIndex)
+        let slot = Int(index % UInt64(capacity)), voltage = voltages[slot]
+        return Measurement(index: index, nanoamps: values[slot], millivolts: voltage == 0 ? nil : Int(voltage))
+    }
     public func reset() { endIndex = 0; count = 0 }
     public func snapshot() -> SampleHistory {
         let copy = SampleHistory(capacity: capacity)
-        copy.values = values; copy.endIndex = endIndex; copy.count = count
+        copy.values = values; copy.voltages = voltages; copy.endIndex = endIndex; copy.count = count
         return copy
     }
     public func measurements() -> [Measurement] {
-        (startIndex..<endIndex).map { Measurement(index: $0, nanoamps: value(at: $0)) }
+        (startIndex..<endIndex).map(measurement(at:))
     }
     /// Half-open visible interval: [start, end). Empty space contributes no samples.
     public func visibleRange(start: Double, end: Double, rate: Double) -> Range<UInt64> {
@@ -120,7 +129,7 @@ public final class SampleHistory {
     public func nearest(to seconds: Double, rate: Double, in range: Range<UInt64>) -> Measurement? {
         guard !range.isEmpty else { return nil }
         let index = min(range.upperBound - 1, max(range.lowerBound, UInt64(max(0, (seconds * rate).rounded()))))
-        return Measurement(index: index, nanoamps: value(at: index))
+        return measurement(at: index)
     }
     /// Keep actual first/extreme/last samples, in acquisition order. No synthetic Y or X.
     public func polyline(in range: Range<UInt64>, columns: Int) -> [Measurement] {
@@ -136,7 +145,7 @@ public final class SampleHistory {
                 if value(at: i) > value(at: high) { high = i }
             }
             for i in Set([lower, low, high, upper - 1]).sorted() {
-                result.append(Measurement(index: i, nanoamps: value(at: i)))
+                result.append(measurement(at: i))
             }
             lower = upper
         }

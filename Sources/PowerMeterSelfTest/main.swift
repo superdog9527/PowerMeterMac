@@ -93,6 +93,24 @@ let polyline = waveform.polyline(in: partial, columns: 2)
 check(polyline.map(\.index) == [0,2,4,5,9], "polyline preserves temporal order and actual extrema")
 check(polyline.allSatisfy { $0.nanoamps == waveform.value(at: $0.index) }, "polyline contains no interpolated values")
 check(waveform.polyline(in: partial, columns: 100).count == 10, "sparse polyline retains every sample")
+let voltageHistory = SampleHistory(capacity: 4)
+voltageHistory.append([
+    Measurement(index: 0, nanoamps: 1_000, millivolts: 3300),
+    Measurement(index: 1, nanoamps: 2_000, millivolts: 5000)
+])
+check(voltageHistory.measurements().compactMap(\.millivolts) == [3300, 5000],
+      "sample history preserves voltage changes")
+let csvURL = FileManager.default.temporaryDirectory.appendingPathComponent("PowerMeterCSV-\(UUID().uuidString).csv")
+do {
+    try CSVExporter.write(voltageHistory.measurements(), rate: .k100, millivolts: 3300, to: csvURL)
+    let csv = try String(contentsOf: csvURL, encoding: .utf8)
+    let rows = csv.split(separator: "\n").dropFirst().map { $0.split(separator: ",") }
+    check(rows.count == 2 && rows[0][4] == "3.3" && rows[1][4] == "5.0" &&
+          abs((Double(rows[0][5]) ?? 0) - 0.0000033) < 1e-12 &&
+          abs((Double(rows[1][5]) ?? 0) - 0.00001) < 1e-12,
+          "CSV exports per-sample voltage and power")
+} catch { check(false, "CSV exports per-sample voltage and power: \(error)") }
+try? FileManager.default.removeItem(at: csvURL)
 let auditURL = FileManager.default.temporaryDirectory
     .appendingPathComponent("PowerMeterSelfTest-\(UUID().uuidString)/commands.jsonl")
 do {
