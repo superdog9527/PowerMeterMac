@@ -25,6 +25,8 @@ swift run PowerMeterMac
 
 生成可双击运行、内含 USB 运行库的应用：`zsh scripts/build-app.sh`。产物位于 `dist/Power Meter.app`。
 
+GitHub Actions 会在每次推送到 `main`、Pull Request 或手动触发时运行自测并构建应用。构建完成后可在对应 Actions 运行页面下载 `Power-Meter-macOS-*` 工件，其中包含可执行的 `Power Meter.app`。
+
 只做安全诊断（电源输出始终关闭）：
 
 ```sh

@@ -1,0 +1,50 @@
+name: Build macOS app
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: macos-14
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install libusb
+        run: brew install libusb
+
+      - name: Run protocol and safety tests
+        run: swift run PowerMeterSelfTest
+
+      - name: Build application bundle
+        run: zsh scripts/build-app.sh
+
+      - name: Verify application bundle
+        run: |
+          codesign --verify --deep --strict --verbose=2 "dist/Power Meter.app"
+          test -x "dist/Power Meter.app/Contents/MacOS/PowerMeterMac"
+          test -f "dist/Power Meter.app/Contents/Resources/AppIcon.icns"
+
+      - name: Package application
+        run: |
+          mkdir -p artifacts
+          ditto -c -k --sequesterRsrc --keepParent \
+            "dist/Power Meter.app" \
+            "artifacts/Power-Meter-macOS-${{ runner.arch }}.zip"
+
+      - name: Upload application
+        uses: actions/upload-artifact@v4
+        with:
+          name: Power-Meter-macOS-${{ runner.arch }}
+          path: artifacts/Power-Meter-macOS-${{ runner.arch }}.zip
+          if-no-files-found: error
+          retention-days: 30
